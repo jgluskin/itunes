@@ -1,36 +1,41 @@
 import { put, takeLatest } from 'redux-saga/effects';
-import { loadedEbooks, searchEbooks } from "./itunesSlice";
+import { loadedEbooks, loadedMusicVideos, searchEbooks, searchMusicVideos } from "./itunesSlice";
 import * as yup from 'yup';
 import { ActionCreatorWithPayload, PayloadAction } from "@reduxjs/toolkit";
+import { Ebook, ebookSchema, generateItunesResultsSchema, musicVideoSchema } from './types';
 
-const ebookSchema = yup.object({
-  trackId: yup.number().defined(),
-  formattedPrice: yup.string().defined(),
-  trackName: yup.string().defined(),
-  artworkUrl60: yup.string().defined(),
-}).defined();
-
-export type Ebook = yup.InferType<typeof ebookSchema>;
-
-async function fetchEbooks(searchTerm: string) {
-  const response = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&entity=ebook`)
+async function fetchData<Schema extends yup.AnySchema<any, any, any>>(url: string, schema: Schema) {
+  const response = await fetch(url)
   const data = await response.json();
 
-  const responseSchema = yup.object({
-    resultCount: yup.number().defined(),
-    results: yup.array(ebookSchema),
-  });
+  const responseSchema = generateItunesResultsSchema(schema);
 
-  return (await responseSchema.validate(data)).results;
+  const { results } = await responseSchema.validate(data);
+
+  return results;
+}
+
+async function fetchEbooks(searchTerm: string) {
+  return fetchData(`https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&entity=ebook`, ebookSchema);
+}
+
+async function fetchMusicVideos(searchTerm: string) {
+  return fetchData(`https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&entity=musicVideo`, musicVideoSchema);
 }
 
 type PayloadActionFromCreator<AC> = AC extends ActionCreatorWithPayload<infer P> ? PayloadAction<P> : never;
 
 function* onSearchEbooks(action: PayloadActionFromCreator<typeof searchEbooks>) {
-  const ebooks = yield fetchEbooks(action.payload);
+  const ebooks: Ebook[] = yield fetchEbooks(action.payload);
   yield put(loadedEbooks(ebooks))
+}
+
+function* onSearchMusicVideos(action: PayloadActionFromCreator<typeof searchEbooks>) {
+  const musicVideos = yield fetchMusicVideos(action.payload);
+  yield put(loadedMusicVideos(musicVideos))
 }
 
 export function* itunesSaga() {
   yield takeLatest(searchEbooks.type, onSearchEbooks);
+  yield takeLatest(searchMusicVideos.type, onSearchMusicVideos);
 }
